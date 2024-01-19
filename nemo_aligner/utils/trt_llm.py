@@ -91,18 +91,21 @@ class GPTGenerateTRTLLM():
             output_ids = broadcast_2d_tensor(
                 output_ids, parallel_state.get_tensor_model_parallel_src_rank(), group, dtype=output_ids.dtype)
 
-        is_done = torch.zeros(output_ids.shape[0], device=output_ids.device)
+        is_done = torch.zeros(output_ids.shape[0], device=output_ids.device).to(torch.int8)
+        context_length = 0
 
         for i in range(output_ids.shape[-1]):
-
+            
+            started = inputs[1] <= context_length
             done_token = self.end_of_generation_condition(
                     output_ids[:, : i + 1], output_ids[:, i], self.tokenizer.eos_id, self.end_strings
                 )
-            done_token = done_token.byte()
-            is_done = is_done | done_token
-            is_done = torch.nonzero(is_done).squeeze()
+            done_token = done_token.byte() & started.byte()
 
+            is_done = is_done | done_token
             output_ids[:, i] = torch.where(is_done == 1, torch.tensor(self.tokenizer.eos_id, device=output_ids.device), output_ids[:, i])
+
+            context_length += 1
 
         sentences = [self.tokenizer.ids_to_text(output.tolist()) for output in output_ids]
         output_ids = torch.Tensor.tolist(output_ids)
