@@ -1,9 +1,9 @@
 from megatron.core import parallel_state
 import torch 
-
+import warnings
 from nemo_aligner.utils.distributed import broadcast_2d_tensor
 from nemo.collections.nlp.modules.common.text_generation_utils import get_model_parallel_src_rank
-from typing import List
+from typing import List, Tuple, Set
 
 # the text representation of eos_id, it applies for all tokenizers
 END_OF_SEQ = '<|endoftext|>'
@@ -23,7 +23,6 @@ class GPTGenerateTRTLLM():
         self.stop_words = self._create_stop_words_()
 
         self.end_strings = self.cfg.ppo.sampling_params.get('end_strings')
-        self.eod_id = self.tokenizer.eod_id
 
     def _import_tensorrt_llm(self):        
         from mpi4py import MPI 
@@ -96,13 +95,13 @@ class GPTGenerateTRTLLM():
         for i in range(output_ids.shape[-1]):
 
             done_token = self.end_of_generation_condition(
-                    output_ids[:, : i + 1], output_ids[:, i], self.eod_id, self.end_strings
+                    output_ids[:, : i + 1], output_ids[:, i], self.tokenizer.eos_id, self.end_strings
                 )
-            done_token = done_token.byte() & started.byte()
+            done_token = done_token.byte()
             is_done = is_done | done_token
-            done_data = torch.nonzero(is_done).squeeze()
+            is_done = torch.nonzero(is_done).squeeze()
 
-            output_ids[:, i] = torch.where(is_done == 1, torch.tensor(special_token, device=output_ids.device), output_ids[:, i])
+            output_ids[:, i] = torch.where(is_done == 1, torch.tensor(self.tokenizer.eos_id, device=output_ids.device), output_ids[:, i])
 
         sentences = [self.tokenizer.ids_to_text(output.tolist()) for output in output_ids]
         output_ids = torch.Tensor.tolist(output_ids)
