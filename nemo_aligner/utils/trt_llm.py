@@ -23,6 +23,7 @@ class GPTGenerateTRTLLM():
         self.stop_words = self._create_stop_words_()
 
         self.end_strings = self.cfg.ppo.sampling_params.get('end_strings')
+        self._end_of_generation_cache = None
 
     def _import_tensorrt_llm(self):        
         from mpi4py import MPI 
@@ -166,7 +167,7 @@ class GPTGenerateTRTLLM():
             which must all be used to identify the end of generation (`tokens` always contains `eod_id`, while
             `strings` may be empty if all end strings are associated to unique tokens)
         """
-        tokenizer = self.model.tokenizer
+        tokenizer = self.tokenizer
         # A cache is used to remember which end strings are associated to unique tokens vs. which ones
         # require an actual string comparison.
         if self._end_of_generation_cache is None or self._end_of_generation_cache["tokenizer"] is not tokenizer:
